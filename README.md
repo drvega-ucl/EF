@@ -1,2 +1,2 @@
-# EF
-Entrepreneur First 
+# Mnemosyne
+Mnemosyne
