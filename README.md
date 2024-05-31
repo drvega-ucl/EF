@@ -1,5 +1,10 @@
 
 # Mnemosyne
+neh
+·
+mow
+·
+zeen
 
 ## Vision
 We believe that in the future, you will never forget anything. The challenge with memory is not the lack of knowledge but its inaccessibility. We aim to solve this problem by passively recalling contextually relevant information.
