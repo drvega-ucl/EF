@@ -1,5 +1,6 @@
 import argparse
 import os
+import csv
 import numpy as np
 import speech_recognition as sr
 import whisper
@@ -80,54 +81,63 @@ def main():
     listener = keyboard.Listener(on_press=on_press)
     listener.start()
 
-    # Cue the user that we're ready to go.
-    print("Model loaded.\n")
-    
-    while True:
-        if transcribe:
-            try:
-                now = datetime.utcnow()
-                # Pull raw recorded audio from the queue.
-                if not data_queue.empty():
-                    phrase_complete = False
-                    # If enough time has passed between recordings, consider the phrase complete.
-                    # Clear the current working audio buffer to start over with the new data.
-                    if phrase_time and now - phrase_time > timedelta(seconds=args.phrase_timeout):
-                        phrase_complete = True
-                    # This is the last time we received new audio data from the queue.
-                    phrase_time = now
-                    
-                    # Combine audio data from queue
-                    audio_data = b''.join(data_queue.queue)
-                    data_queue.queue.clear()
-                    
-                    # Convert in-ram buffer to something the model can use directly without needing a temp file.
-                    # Convert data from 16 bit wide integers to floating point with a width of 32 bits.
-                    # Clamp the audio stream frequency to a PCM wavelength compatible default of 32768hz max.
-                    audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+    # Open a CSV file to write the transcriptions
+    with open('transcriptions.csv', 'w', newline='') as csvfile:
+        fieldnames = ['timestamp', 'transcription']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
 
-                    # Read the transcription.
-                    result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
-                    text = result['text'].strip()
+        # Cue the user that we're ready to go.
+        print("Model loaded.\n")
+        
+        while True:
+            if transcribe:
+                try:
+                    now = datetime.utcnow()
+                    # Pull raw recorded audio from the queue.
+                    if not data_queue.empty():
+                        phrase_complete = False
+                        # If enough time has passed between recordings, consider the phrase complete.
+                        # Clear the current working audio buffer to start over with the new data.
+                        if phrase_time and now - phrase_time > timedelta(seconds=args.phrase_timeout):
+                            phrase_complete = True
+                        # This is the last time we received new audio data from the queue.
+                        phrase_time = now
+                        
+                        # Combine audio data from queue
+                        audio_data = b''.join(data_queue.queue)
+                        data_queue.queue.clear()
+                        
+                        # Convert in-ram buffer to something the model can use directly without needing a temp file.
+                        # Convert data from 16 bit wide integers to floating point with a width of 32 bits.
+                        # Clamp the audio stream frequency to a PCM wavelength compatible default of 32768hz max.
+                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
-                    # If we detected a pause between recordings, add a new item to our transcription.
-                    # Otherwise edit the existing one.
-                    if phrase_complete:
-                        transcription.append(text)
+                        # Read the transcription.
+                        result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
+                        text = result['text'].strip()
+
+                        # Write the transcription to the CSV file with a timestamp
+                        writer.writerow({'timestamp': now.isoformat(), 'transcription': text})
+
+                        # If we detected a pause between recordings, add a new item to our transcription.
+                        # Otherwise edit the existing one.
+                        if phrase_complete:
+                            transcription.append(text)
+                        else:
+                            transcription[-1] = text
+
+                        # Clear the console to reprint the updated transcription.
+                        os.system('cls' if os.name=='nt' else 'clear')
+                        for line in transcription:
+                            print(line)
+                        # Flush stdout.
+                        print('', end='', flush=True)
                     else:
-                        transcription[-1] = text
-
-                    # Clear the console to reprint the updated transcription.
-                    os.system('cls' if os.name=='nt' else 'clear')
-                    for line in transcription:
-                        print(line)
-                    # Flush stdout.
-                    print('', end='', flush=True)
-                else:
-                    # Infinite loops are bad for processors, must sleep.
-                    sleep(0.25)
-            except KeyboardInterrupt:
-                break
+                        # Infinite loops are bad for processors, must sleep.
+                        sleep(0.25)
+                except KeyboardInterrupt:
+                    break
 
     print("\n\nTranscription:")
     for line in transcription:
